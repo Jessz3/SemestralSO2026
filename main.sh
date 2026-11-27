@@ -16,11 +16,17 @@ mostrar_menu() {
     printf "8) Cambiar prioridad\n"
     printf "0) Salir\n"
 }
- 
+
+siguiente() {
+    echo ""
+    read -r -p "Presione Enter para continuar (Siguiente)..."
+}
+
 while true; do
     mostrar_menu
     read -r -p "Seleccione una opción: " opcion
- 
+    clear
+
     case "$opcion" in
         1) obtener_estadistica ;;
         2) extraer_proceso ;;
@@ -31,6 +37,8 @@ while true; do
         7) matar_proceso ;;
         8) cambiar_prioridad ;;
         0) echo "Hasta luego."; exit 0 ;;
-        *) echo "Opción no válida."; read -r -p "Enter para continuar..." ;;
+        *) echo "Opción no válida." ;;
     esac
+
+    siguiente
 done

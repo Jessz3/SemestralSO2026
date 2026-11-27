@@ -168,12 +168,12 @@ identificar_proceso() {
     echo ""
 }
  
+# =====================================================================
 # FUNCIÓN 4: listar_puertos
 # Lista todos los puertos TCP/UDP en escucha con el PID y el nombre
 # del proceso asociado.
 # =====================================================================
 listar_puertos() {
-    clear
     echo "=============== PUERTOS TCP/UDP EN ESCUCHA ==============="
     echo
     if [ "$EUID" -ne 0 ]; then
@@ -195,7 +195,6 @@ listar_puertos() {
     echo
     echo "Total de puertos en escucha: $(ss -tulnH | wc -l)"
     echo
-    read -r -p "Presione Enter para continuar..."
 }
  
 visualizar_monitoreo() {
@@ -209,11 +208,18 @@ visualizar_monitoreo() {
     top -d 1 -o %CPU
 }
  
+# =====================================================================
+# FUNCIÓN 6: generar_reporte
+# Genera diagnostico.txt llamando a las funciones 1 a 5, de modo que
+# el reporte contiene exactamente lo mismo que muestra el menú.
+# =====================================================================
 generar_reporte() {
     local reporte
-    reporte="$(cd "$(dirname "$0")" && pwd)/diagnóstico.txt"
-    clear
-    echo "Generando reporte, espere unos segundos..."
+    reporte="$(cd "$(dirname "$0")" && pwd)/diagnostico.txt"
+
+    echo "Generando reporte (unos 10 segundos)..."
+    echo "Si se solicita, ingrese su contraseña de sudo (la usa el punto 3)."
+
     {
         echo "##################################################################"
         echo "    DIAGNÓSTICO INTEGRAL DE RENDIMIENTO Y CUELLOS DE BOTELLA"
@@ -225,84 +231,47 @@ generar_reporte() {
         echo "Encendido:    $(uptime -p)"
         echo "Carga media:  $(cut -d' ' -f1-3 /proc/loadavg)  (1, 5 y 15 min)"
         echo "Núcleos CPU:  $(nproc)"
-        # ---------- 1. Memoria virtual, paginación, interrupciones y CPU ----------
-        echo
+        echo ""
+
+        # Punto 1
+        obtener_estadistica
+        echo ""
+
+        # Punto 2
         echo "=================================================================="
-        echo " 1. MEMORIA VIRTUAL, PAGINACIÓN, INTERRUPCIONES Y CPU (vmstat 1 5)"
+        echo "             2. TOP 10 PROCESOS POR CPU Y MEMORIA RAM"
         echo "=================================================================="
-        vmstat 1 5
-        echo
-        echo "Guía: r = procesos esperando CPU     b = procesos bloqueados (I/O)"
-        echo "      si/so = paginación (swap)      in = interrupciones/s"
-        echo "      cs = cambios de contexto/s     wa = % CPU esperando disco"
-        echo
-        free -h
-        # ---------- 2. Top 10 procesos por CPU y RAM ----------
-        echo
+        extraer_proceso
+        echo ""
+
+        # Punto 3
+        identificar_proceso
+        echo ""
+
+        # Punto 4
+        listar_puertos
+        echo ""
+
+        # Punto 5: visualizar_monitoreo abre top interactivo, que no se puede
+        # guardar en un archivo. Se usa el mismo top (-o %CPU) en modo batch.
         echo "=================================================================="
-        echo " 2a. TOP 10 PROCESOS POR CONSUMO DE CPU"
+        echo "        5. MONITOR (instantánea de top ordenado por CPU)"
         echo "=================================================================="
-        ps -eo pid,user:15,%cpu,%mem,comm --sort=-%cpu | head -n 11
-        echo
-        echo "=================================================================="
-        echo " 2b. TOP 10 PROCESOS POR CONSUMO DE MEMORIA RAM"
-        echo "=================================================================="
-        ps -eo pid,user:15,%mem,rss,comm --sort=-%mem | head -n 11
-        # ---------- 3. Procesos con mayor lectura/escritura en disco ----------
-        echo
-        echo "=================================================================="
-        echo " 3. PROCESOS CON MAYOR LECTURA/ESCRITURA EN DISCO"
-        echo "=================================================================="
-        printf "%-8s %-12s %-12s %s\n" "PID" "LEIDO_KB" "ESCRITO_KB" "PROCESO"
-        for dir in /proc/[0-9]*; do
-            [ -r "$dir/io" ] || continue
-            leido=0; escrito=0
-            while read -r clave valor; do
-                case "$clave" in
-                    read_bytes:)  leido=$valor ;;
-                    write_bytes:) escrito=$valor ;;
-                esac
-            done 2>/dev/null < "$dir/io"
-            total=$(( leido + escrito ))
-            [ "$total" -gt 0 ] || continue
-            printf "%d %-8s %-12s %-12s %s\n" "$total" "${dir#/proc/}" \
-                $(( leido / 1024 )) $(( escrito / 1024 )) "$(cat "$dir/comm" 2>/dev/null)"
-        done | sort -k1,1nr | head -n 10 | cut -d' ' -f2-
-        # ---------- 4. Puertos TCP/UDP en escucha ----------
-        echo
-        echo "=================================================================="
-        echo " 4. PUERTOS TCP/UDP EN ESCUCHA"
-        echo "=================================================================="
-        printf "%-6s %-30s %-7s %-8s %s\n" "PROTO" "IP_LOCAL" "PUERTO" "PID" "PROCESO"
-        ss -tulnpH | awk '{
-            proto = $1; direccion = $5; info = $7
-            n = split(direccion, partes, ":")
-            puerto = partes[n]
-            ip = substr(direccion, 1, length(direccion) - length(puerto) - 1)
-            pid = "-"; nombre = "-"
-            if (match(info, /pid=[0-9]+/)) pid = substr(info, RSTART + 4, RLENGTH - 4)
-            if (match(info, /\("[^"]+"/))  nombre = substr(info, RSTART + 2, RLENGTH - 3)
-            printf "%-6s %-30s %-7s %-8s %s\n", proto, ip, puerto, pid, nombre
-        }' | sort -k1,1 -k3,3n
-        # ---------- 5. Instantánea del monitor ----------
-        echo
-        echo "=================================================================="
-        echo " 5. INSTANTÁNEA DEL MONITOR (top en modo batch)"
-        echo "=================================================================="
-        top -b -n 1 -w 512 | head -n 20
-        echo
+        top -b -n 1 -o %CPU -w 512 | head -n 20
+        echo ""
+
         echo "======================== FIN DEL REPORTE ========================="
     } > "$reporte" 2>&1
-    echo
+
+    echo ""
     echo "Reporte generado: $reporte ($(wc -l < "$reporte") líneas)"
-    echo
+    echo ""
     read -r -p "¿Desea ver el reporte ahora? (s/n): " ver
     if [[ "$ver" =~ ^[sS]$ ]]; then
         less "$reporte"
     fi
-    read -r -p "Presione Enter para continuar..."
 }
- 
+
 matar_proceso() {
     read -rp "Escriba el PID a matar: " pid
     # 1. Validar que el PID sea numérico y que el proceso realmente exista
