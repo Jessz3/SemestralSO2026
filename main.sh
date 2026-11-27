@@ -1,5 +1,7 @@
 #!/bin/bash
- source libreria.sh
+source libreria.sh
+
+instalar_dependencias
 
 mostrar_menu() {
     clear
