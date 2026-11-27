@@ -1,5 +1,6 @@
 #!/bin/bash
- 
+ source libreria.sh
+
 mostrar_menu() {
     clear
     printf "Diagnóstico Integral de Rendimiento y Cuellos de Botella\n"
